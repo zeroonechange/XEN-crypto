@@ -102,11 +102,11 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
      */
     function _penalty(uint256 secsLate) private pure returns (uint256) {
         // =MIN(2^(daysLate+3)/window-1,99)
-        uint256 daysLate = secsLate / SECONDS_IN_DAY;
-        if (daysLate > WITHDRAWAL_WINDOW_DAYS - 1) return MAX_PENALTY_PCT;
-        uint256 penalty = (uint256(1) << (daysLate + 3)) / WITHDRAWAL_WINDOW_DAYS - 1;
-        return Math.min(penalty, MAX_PENALTY_PCT);
-    }
+        uint256 daysLate = secsLate / SECONDS_IN_DAY; // 和等待期的天数差  
+        if (daysLate > WITHDRAWAL_WINDOW_DAYS - 1) return MAX_PENALTY_PCT;  // 大于7天    返回 99  差不多没了
+        uint256 penalty = (uint256(1) << (daysLate + 3)) / WITHDRAWAL_WINDOW_DAYS - 1;  //  penalty =  (1<<d+3) / 6   还用到了位运算  
+        return Math.min(penalty, MAX_PENALTY_PCT); // min(penalty, 99)
+    }  
 
     /**
      * @dev calculates net Mint Reward (adjusted for Penalty)
@@ -119,11 +119,11 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
         uint256 eeaRate
     ) private view returns (uint256) {
         uint256 secsLate = block.timestamp - maturityTs;
-        uint256 penalty = _penalty(secsLate);
+        uint256 penalty = _penalty(secsLate);  // 惩罚  如果不在7天内 获取奖励  就会消掉  
         uint256 rankDelta = Math.max(globalRank - cRank, 2);
         uint256 EAA = (1_000 + eeaRate);
         uint256 reward = getGrossReward(rankDelta, amplifier, term, EAA);
-        return (reward * (100 - penalty)) / 100;
+        return (reward * (100 - penalty)) / 100;  // 按照衰减机制 给 领取人 
     }
 
     /**
@@ -206,9 +206,9 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
         uint256 term,
         uint256 eaa
     ) public pure returns (uint256) {
-        int128 log128 = rankDelta.fromUInt().log_2();
-        int128 reward128 = log128.mul(amplifier.fromUInt()).mul(term.fromUInt()).mul(eaa.fromUInt());
-        return reward128.div(uint256(1_000).fromUInt()).toUInt();
+        int128 log128 = rankDelta.fromUInt().log_2(); // 计算对数  特定的计算库  避免数据问题 
+        int128 reward128 = log128.mul(amplifier.fromUInt()).mul(term.fromUInt()).mul(eaa.fromUInt()); // log2(rankD) * AMP * term * EAA  
+        return reward128.div(uint256(1_000).fromUInt()).toUInt(); // 除掉 1_000  转成整形 
     }
 
     /**
