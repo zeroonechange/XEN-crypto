@@ -99,6 +99,21 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev calculates Withdrawal Penalty depending on lateness
+     * 计算领取天数衰减系数     
+     * days late    penalty 
+     *      0           0
+     *      1           1
+     *      2           3
+     *      3           8
+     *      4           17
+     *      5           35
+     *      6           72
+     *      7           100
+     * 最好在24小时内领取  不然后面越等越亏的多  
+     * 转为天数 
+     * 如果天数大于6  直接返回 亏损比=99 
+     *        否则  亏损比=2^(天数+3)/6   这个超过了99就返回99 
+     * y=2^(x+3)/6
      */
     function _penalty(uint256 secsLate) private pure returns (uint256) {
         // =MIN(2^(daysLate+3)/window-1,99)
@@ -110,6 +125,13 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev calculates net Mint Reward (adjusted for Penalty)
+     * 等待期到了 计算应该铸多少币
+     * 根据当前区块的时间戳减去等待期 得到领取的时间天数差  
+     * 根据天数差  计算惩罚比例  _penalty  最好在 24小时内领取  随着时间 领取数量会减少 第七天为0 
+     * 计算 排名差    拿全局排名 减去 该钱包铸币时的排名 
+     * 计算 EAA 早期参与者放大系数 
+     * 计算 铸币数量 - 不考虑领取天数衰减  getGrossReward
+     * 计算 衰减机制后的铸币数量
      */
     function _calculateMintReward(
         uint256 cRank,
@@ -199,6 +221,9 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev calculates gross Mint Reward
+     * 计算奖励 = log2(cRg - cRu) * AMP * Term * EAA 
+     * cRg :  global rank      cRu : user rank  
+     * AMP = MAX(3000- tS, 1)  tS=挖矿时间-创世纪  之间间隔的天数 
      */
     function getGrossReward(
         uint256 rankDelta,
@@ -257,6 +282,11 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev accepts User cRank claim provided all checks pass (incl. no current claim exists)
+     * 
+     * 判断是否已经挖过了 
+     * 新建挖矿结构体 MintInfo  {钱包地址  等待期  领取期  当前排名  时间奖励放大器-AMP   早期参与放大器-EAA}
+     * 把信息存到 userMints 这个表里面    mapping(address => MintInfo) 
+     * 激活矿工数 和 全局排名 加1 
      */
     function claimRank(uint256 term) external {
         uint256 termSec = term * SECONDS_IN_DAY;
@@ -280,6 +310,13 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev ends minting upon maturity (and within permitted Withdrawal Time Window), gets minted XEN
+     * 领取奖励 
+     * 根据钱包地址去userMints表获取 挖矿结构体 MintInfo  {钱包地址  等待期  领取期  当前排名  时间奖励放大器-AMP   早期参与放大器-EAA}
+     * 俩个判断     1.当前排名是否大于0  之前是否挖矿过    2.已经到了等待期  这个没到 不能领取token的 
+     * 计算应该获取的token数量  _calculateMintReward()
+     * 铸币给钱包   
+     * 激活矿工数减1
+     * 清空 userMints 表 当前钱包数据  
      */
     function claimMintReward() external {
         MintInfo memory mintInfo = userMints[_msgSender()];
@@ -293,7 +330,7 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
             mintInfo.maturityTs,
             mintInfo.amplifier,
             mintInfo.eaaRate
-        ) * 1 ether;
+        ) * 1 ether;  // 这里又 乘以了一个 1 ether 
         _mint(_msgSender(), rewardAmount);
 
         _cleanUpUserMint();

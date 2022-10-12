@@ -9,11 +9,11 @@
 
 ----------------------------------------------------------------------------------------------  
 
-官网		https://xen.network/mainnet
-Dune看板	https://dune.com/sixdegree/xen-crypto-overview
+官网		    https://xen.network/mainnet
+Dune看板	    https://dune.com/sixdegree/xen-crypto-overview
 合约地址		https://etherscan.io/address/0x06450dee7fd2fb8e39061434babcfc05599a6fb8 
 相关文章		https://www.odaily.news/post/5182231		
-			https://panewslab.com/zh/articledetails/hbk5ssoq.html
+			   https://panewslab.com/zh/articledetails/hbk5ssoq.html
 交易平台		https://coinmarketcap.com/currencies/xen-crypto/markets/ 
 
 记录 10/10/23:02  
