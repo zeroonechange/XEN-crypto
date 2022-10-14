@@ -158,6 +158,7 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev calculates XEN Stake Reward
+     * 计算质押奖励
      */
     function _calculateStakeReward(
         uint256 amount,
@@ -165,9 +166,16 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
         uint256 maturityTs,
         uint256 apy
     ) private view returns (uint256) {
-        if (block.timestamp > maturityTs) {
-            uint256 rate = (apy * term * 1_000_000) / DAYS_IN_YEAR;
-            return (amount * rate) / 100_000_000;
+        if (block.timestamp > maturityTs) { // 到期了才能有奖励
+        // So, if you are staking 100,000 XEN for 365 days within the first 90 days since
+        // XEN Genesis, you will be able to claim 120,000 XEN after this period.
+        // 如果你有 100个 在第一个90天内质押 质押365天 那么 APY=20  term=365
+            // rate = 20 * 365 * 1_000_000 / 365 
+            // reward = amount * rate / 100_000_000  
+            // = amount * (20 * 365 * 1_000_000 / 365 ) / 100_000_000   
+            // = amount * 20/100 = 0.2*amount
+            uint256 rate = (apy * term * 1_000_000) / DAYS_IN_YEAR;   // apy*天数*1000/365 
+            return (amount * rate) / 100_000_000;   // 质押的数量 * rate / 100_000_000 
         }
         return 0;
     }
@@ -196,25 +204,35 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
 
     /**
      * @dev calculates APY (in %)
+     * 计算质押的年化率
+     * (0,90]     ->  19% 
+     * (90,180]   ->  18% 
+     * (180,270]  ->  17% 
+     * (270,360]  ->  16% 
+     * (360,450]  ->  15% 
      */
     function _calculateAPY() private view returns (uint256) {
+        // 衰减天数 /  90     从创世纪开始算起 
         uint256 decrease = (block.timestamp - genesisTs) / (SECONDS_IN_DAY * XEN_APY_DAYS_STEP);
+        // 20 - 2 < decrease   ->  2    也就是说  衰减天数太久了 比如 1620天刚好有2%的收益  decrease=18   后面再怎么弄也要保证 2%的APY 
         if (XEN_APY_START - XEN_APY_END < decrease) return XEN_APY_END;
+        // 20 - decrease   
         return XEN_APY_START - decrease;
     }
 
     /**
      * @dev creates User Stake
+     * 创建质押数据  
      */
     function _createStake(uint256 amount, uint256 term) private {
         userStakes[_msgSender()] = StakeInfo({
-            term: term,
-            maturityTs: block.timestamp + term * SECONDS_IN_DAY,
-            amount: amount,
-            apy: _calculateAPY()
+            term: term,        // 天数
+            maturityTs: block.timestamp + term * SECONDS_IN_DAY, // 到期时间
+            amount: amount,  // 数量
+            apy: _calculateAPY() // 年化率
         });
-        activeStakes++;
-        totalXenStaked += amount;
+        activeStakes++;     // 活跃质押者数量
+        totalXenStaked += amount; // 总的质押数量
     }
 
     // PUBLIC CONVENIENCE GETTERS
@@ -412,24 +430,25 @@ contract XENCrypto is Context, IRankedMintingToken, IStakingToken, IBurnableToke
     function stake(uint256 amount, uint256 term) external {
         require(balanceOf(_msgSender()) >= amount, "XEN: not enough balance");
         require(amount > XEN_MIN_STAKE, "XEN: Below min stake");
-        require(term * SECONDS_IN_DAY > MIN_TERM, "XEN: Below min stake term");
-        require(term * SECONDS_IN_DAY < MAX_TERM_END + 1, "XEN: Above max stake term");
-        require(userStakes[_msgSender()].amount == 0, "XEN: stake exists");
+        require(term * SECONDS_IN_DAY > MIN_TERM, "XEN: Below min stake term"); // 大于一天 
+        require(term * SECONDS_IN_DAY < MAX_TERM_END + 1, "XEN: Above max stake term"); // 小于 1_000 天
+        require(userStakes[_msgSender()].amount == 0, "XEN: stake exists"); // 已经质押过了
 
         // burn staked XEN
-        _burn(_msgSender(), amount);
+        _burn(_msgSender(), amount);  // 烧掉一些 token 
         // create XEN Stake
-        _createStake(amount, term);
+        _createStake(amount, term);   // 创建质押数据  
         emit Staked(_msgSender(), amount, term);
     }
 
     /**
      * @dev ends XEN Stake and gets reward if the Stake is mature
+     * 获取质押奖励
      */
     function withdraw() external {
         StakeInfo memory userStake = userStakes[_msgSender()];
         require(userStake.amount > 0, "XEN: no stake exists");
-
+        // 计算质押奖励
         uint256 xenReward = _calculateStakeReward(
             userStake.amount,
             userStake.term,
